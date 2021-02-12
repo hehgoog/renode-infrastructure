@@ -377,6 +377,7 @@
     <Compile Include="Peripherals\Miscellaneous\OpenTitan_VerilatorSwTestStatus.cs" />
     <Compile Include="Peripherals\Miscellaneous\OpenTitan_PowerManager.cs" />
     <Compile Include="Peripherals\Timers\OpenTitan_Timer.cs" />
+    <Compile Include="Peripherals\MTD\OpenTitan_FlashController.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ProjectExtensions>
