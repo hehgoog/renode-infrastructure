@@ -27,10 +27,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 .WithFlag(0, out interruptState, FieldMode.Read | FieldMode.Write,
                     writeCallback: (_, value) =>
                     {
-                        this.Log(LogLevel.Info, $"Interrupt State ${value}");
+
+                        this.Log(LogLevel.Debug, $"Interrupt State ${value}");
                     }, valueProviderCallback: _ =>
                     {
-                        this.Log(LogLevel.Info, "Read Interrupt State");
+                        this.Log(LogLevel.Debug, "Read Interrupt State");
                         return false;
                     }, name: "wakeup")
                 .WithIgnoredBits(1,31);
@@ -39,10 +40,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 .WithFlag(0, out interruptEnable, FieldMode.Read | FieldMode.Write,
                     writeCallback: (_, value) =>
                     {
-                        this.Log(LogLevel.Info, $"Interrupt Enable ${value}");
+
+                        this.Log(LogLevel.Debug, $"Interrupt Enable ${value}");
                     }, valueProviderCallback: _ =>
                     {
-                        this.Log(LogLevel.Info, "Read Interrupt Enable");
+                        this.Log(LogLevel.Debug, "Read Interrupt Enable");
                         return false;
                     }, name: "wakeup")
                 .WithIgnoredBits(1,31);
@@ -51,10 +53,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 .WithFlag(0, out interruptTest, FieldMode.Read | FieldMode.Write,
                     writeCallback: (_, value) =>
                     {
-                        this.Log(LogLevel.Info, $"Interrupt test ${value}");
+
+                        this.Log(LogLevel.Debug, $"Interrupt test ${value}");
                     }, valueProviderCallback: _ =>
                     {
-                        this.Log(LogLevel.Info, "Read Interrupt test");
+                        this.Log(LogLevel.Debug, "Read Interrupt test");
                         return false;
                     }, name: "wakeup")
                 .WithIgnoredBits(1,31);
