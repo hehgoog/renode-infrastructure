@@ -43,7 +43,8 @@ namespace Antmicro.Renode.Peripherals.IRQControllers.PLIC
 
             irqTargets = new IrqTarget[numberOfTargets];
             for(var i = 0u; i < numberOfTargets; i++)
-            {
+            {   
+                this.Log(LogLevel.Info, "Creating irqTarget[0x{0:X}]", i);
                 irqTargets[i] = (supportedLevels == null)
                     ? new IrqTarget(i, this)
                     : new IrqTarget(i, this, supportedLevels);
@@ -116,6 +117,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers.PLIC
 
         protected void AddTargetClaimCompleteRegister(Dictionary<long, DoubleWordRegister> registersMap, long offset, uint hartId, PrivilegeLevel level)
         {
+            this.Log(LogLevel.Info, "Adding target {0} claim register address 0x{1:X}", hartId, offset);
             registersMap.Add(offset, new DoubleWordRegister(this).WithValueField(0, 32, valueProviderCallback: _ =>
             {
                 lock(irqSources)
@@ -140,10 +142,11 @@ namespace Antmicro.Renode.Peripherals.IRQControllers.PLIC
         protected void AddTargetEnablesRegister(Dictionary<long, DoubleWordRegister> registersMap, long address, uint hartId, PrivilegeLevel level, int numberOfSources)
         {
             var maximumSourceDoubleWords = (int)Math.Ceiling((numberOfSources + 1) / 32.0) * 4;
-
+            this.Log(LogLevel.Info, "Maximum source double words {0}", maximumSourceDoubleWords);
             for(var offset = 0u; offset < maximumSourceDoubleWords; offset += 4)
             {
                 var lOffset = offset;
+                this.Log(LogLevel.Info, "Adding target {0} enable register address 0x{1:X}", hartId, address + offset);
                 registersMap.Add(address + offset, new DoubleWordRegister(this).WithValueField(0, 32, writeCallback: (_, value) =>
                 {
                     lock(irqSources)

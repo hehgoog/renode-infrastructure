@@ -21,59 +21,49 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
     [AllowedTranslations(AllowedTranslation.ByteToDoubleWord)]
     public class OpenTitan_PlatformLevelInterruptController : PlatformLevelInterruptControllerBase, IKnownSize
     {
-        public OpenTitan_PlatformLevelInterruptController()
-            : base(numberOfSources: NumberOfSources, numberOfTargets: 1, prioritiesEnabled: true, countSourcesFrom0: true, supportedLevels: null)
+        public OpenTitan_PlatformLevelInterruptController(int numberOfSources = 84, int numberOfTargets = 1)
+            : base(numberOfSources, numberOfTargets, prioritiesEnabled: true, countSourcesFrom0: true, supportedLevels: null)
         {
+            // OpenTitan PLIC implementation source is limited
+            if (numberOfSources > MaxNumberOfSources) {
+                throw new ConstructionException($"Current {this.GetType().Name} implementation does not support more than {MaxNumberOfSources} sources");
+            }
+
             var registersMap = new Dictionary<long, DoubleWordRegister>();
+            
+            int InterruptPendingRegisterCount = (int)Math.Ceiling(numberOfSources / 32.0);
+            int InterruptSourceModeCount = (int)Math.Ceiling(numberOfSources / 32.0);
+            for(var i = 0; i < InterruptPendingRegisterCount; i++)
+            {
+                long InterruptPendingOffset = (long)Registers.InterruptPending0 + i * 4;
+                this.Log(LogLevel.Info, "Creating InterruptPending{0}[0x{1:X}]", i, InterruptPendingOffset);
+                registersMap.Add((long)InterruptPendingOffset, new DoubleWordRegister(this)
+                    .WithValueField(0, 32, FieldMode.Read, valueProviderCallback: (_) => {
+                            // TODO: Build register value from pending sources IRQs
+                            return 0;
+                        }));
+            }
 
-            registersMap.Add((long)Registers.InterruptPending0, new DoubleWordRegister(this)
-                .WithValueField(0, 32, FieldMode.Read, valueProviderCallback: (_) => {
-                        return 0;
-                    }));
+            long InterruptSourceMode0 = (long)Registers.InterruptPending0 + (InterruptPendingRegisterCount * 4);
+            for(var i = 0; i < InterruptSourceModeCount; i++)
+            {
+                long InterruptSourceModeOffset = InterruptSourceMode0 + i *4;
+                this.Log(LogLevel.Info, "Creating InterruptSourceMode{0}[0x{1:X}]",i, InterruptSourceModeOffset);
+                registersMap.Add(InterruptSourceModeOffset, new DoubleWordRegister(this)
+                    .WithValueField(0, 32, FieldMode.Read | FieldMode.Write, valueProviderCallback: (_) => {
+                            return 0;
+                        }, writeCallback: (_, value) => {
+                            this.Log(LogLevel.Noisy, $"Write InterruptSourceMode0 0x{value:X}");
+                        }));
+            }
 
-            registersMap.Add((long)Registers.InterruptPending1, new DoubleWordRegister(this)
-                .WithValueField(0, 32, FieldMode.Read, valueProviderCallback: (_) => {
-                        return 0;
-                    }));
-
-            registersMap.Add((long)Registers.InterruptPending2, new DoubleWordRegister(this)
-                .WithValueField(0, 32, FieldMode.Read, valueProviderCallback: (_) => {
-                        return 0;
-                    }));
-
-            registersMap.Add((long)Registers.InterruptSourceMode0, new DoubleWordRegister(this)
-                .WithValueField(0, 32, FieldMode.Read | FieldMode.Write, valueProviderCallback: (_) => {
-                        return 0;
-                    }, writeCallback: (_, value) => {
-                        this.Log(LogLevel.Noisy, $"Write InterruptSourceMode0 0x{value:X}");
-                    }));
-
-            registersMap.Add((long)Registers.InterruptSourceMode1, new DoubleWordRegister(this)
-                .WithValueField(0, 32, FieldMode.Read | FieldMode.Write, valueProviderCallback: (_) => {
-                        return 0;
-                    }, writeCallback: (_, value) => {
-                        this.Log(LogLevel.Noisy, $"Write InterruptSourceMode1 0x{value:X}");
-                    }));
-
-            registersMap.Add((long)Registers.InterruptSourceMode2, new DoubleWordRegister(this)
-                .WithValueField(0, 32, FieldMode.Read | FieldMode.Write, valueProviderCallback: (_) => {
-                        this.Log(LogLevel.Noisy, $"InterruptSourceMode2");
-                        return 0;
-                    }, writeCallback: (_, value) => {
-                        this.Log(LogLevel.Noisy, $"Write InterruptSourceMode2 0x{value:X}");
-                    }));
-
-            registersMap.Add((long)Registers.Target0SoftwareInterrupt, new DoubleWordRegister(this)
-                .WithValueField(0, 1, FieldMode.Read | FieldMode.Write, valueProviderCallback: (_) => {
-                        return 0;
-                    }, writeCallback: (_, value) => {
-                        this.Log(LogLevel.Noisy, $"Write Target 0 Software Interrupt 0x{value:X}");
-                    }));
-
-            for(var i = 0; i <= NumberOfSources; i++)
+            long Source0Priority = InterruptSourceMode0 + (InterruptSourceModeCount * 4);
+            for(var i = 0; i < numberOfSources; i++)
             {
                 var j = i;
-                registersMap[(long)Registers.Source0Priority +  (4 * i)] = new DoubleWordRegister(this)
+                long SourcePriorityOffset = Source0Priority +  (4 * i);
+                this.Log(LogLevel.Info, "Creating SourcePriority{0}[0x{1:X}]", i, SourcePriorityOffset);
+                registersMap[SourcePriorityOffset] = new DoubleWordRegister(this)
                     .WithValueField(0, 3,
                                     valueProviderCallback: (_) => irqSources[j].Priority,
                                     writeCallback: (_, value) =>
@@ -83,28 +73,52 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                                     });
             }
 
-            AddTargetEnablesRegister(registersMap, (long)Registers.Target0MachineEnables, 0, (PrivilegeLevel)0, NumberOfSources);
-            AddTargetClaimCompleteRegister(registersMap, (long)Registers.Target0ClaimComplete, 0, (PrivilegeLevel)0);
+            // Algorithm for offset is pulled from the HJSON file within OpenTitan rv_plic
+            long Target0MachineEnablesOffset = (long)(0x100*(Math.Ceiling((numberOfSources*4+8*Math.Ceiling(numberOfSources/32.0))/0x100)) + 0*0x100);
+            int TargetMachineEnableCount = (int)Math.Ceiling(numberOfSources / 32.0);
+
+            for(var i = 0; i < numberOfTargets; i++)
+            {
+                long TargetMachineEnablesOffset = Target0MachineEnablesOffset + (TargetMachineEnableCount * i) * 4 + (i * 4 * 3);
+                this.Log(LogLevel.Info, $"OFFSET: {TargetMachineEnablesOffset}");
+                AddTargetEnablesRegister(registersMap, TargetMachineEnablesOffset, (uint)i, (PrivilegeLevel)0, numberOfSources);
+
+                long TargetClaimCompleteOffset = TargetMachineEnablesOffset + (TargetMachineEnableCount * 4);
+                AddTargetClaimCompleteRegister(registersMap, TargetClaimCompleteOffset, (uint)i, (PrivilegeLevel)0);
+
+                long TargetPriorityThresholdOffset = TargetClaimCompleteOffset + 4;
+                this.Log(LogLevel.Info, "Creating Target {0} Priority Threshold [0x{1:X}]", i, TargetPriorityThresholdOffset);
+                registersMap.Add(TargetPriorityThresholdOffset, new DoubleWordRegister(this)
+                    .WithValueField(0, 1, FieldMode.Read | FieldMode.Write, valueProviderCallback: (_) => {
+                            return 0;
+                        }, writeCallback: (_, value) => {
+                            var j = i;
+                            this.Log(LogLevel.Noisy, $"Write Target {j} Priority Threshold 0x{value:X}");
+                        }));
+                    
+                long TargetSoftwareOffset = TargetPriorityThresholdOffset + 4;
+                this.Log(LogLevel.Info, "Creating Target {0} Software Interrupt [0x{1:X}]", i, TargetSoftwareOffset);
+                registersMap.Add(TargetSoftwareOffset, new DoubleWordRegister(this)
+                    .WithValueField(0, 1, FieldMode.Read | FieldMode.Write, valueProviderCallback: (_) => {
+                            return 0;
+                        }, writeCallback: (_, value) => {
+                            var j = i;
+                            this.Log(LogLevel.Noisy, $"Write Target {j} Software Interrupt 0x{value:X}");
+                        }));
+
+            }
 
             registers = new DoubleWordRegisterCollection(this, registersMap);
         }
 
         public long Size => 0x1000;
 
-        private const int NumberOfSources = 3;
+        private const int MaxNumberOfSources = 255;
 
         private enum Registers : long
         {
             InterruptPending0 = 0x0,
-            InterruptPending1 = 0x4,
-            InterruptPending2 = 0x8,
-            InterruptSourceMode0 = 0xc,
-            InterruptSourceMode1 = 0x10,
-            InterruptSourceMode2 = 0x14,
 
-            Source0Priority = 0x18,
-            Source1Priority = 0x1C,
-            Source2Priority = 0x20,
 
             Target0MachineEnables = 0x200,
             Target0PriorityThreshold = 0x20C,
