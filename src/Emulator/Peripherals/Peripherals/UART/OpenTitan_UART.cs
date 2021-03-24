@@ -26,6 +26,8 @@ namespace Antmicro.Renode.Peripherals.UART
             rxTimeoutIRQ = new GPIO();
             rxParityErrorIRQ = new GPIO();
 
+            tx_ongoing = false;
+
             registers = new DoubleWordRegisterCollection(this, BuildRegisterMap());
             txQueue = new Queue<byte>();
         }
@@ -44,6 +46,7 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             if(lineLoopbackEnabled.Value)
             {
+                tx_ongoing = true;
                 TransmitCharacter(value);
                 this.Log(LogLevel.Noisy, "Line Loopback Enabled, byte echoed by hardware.");
             }
@@ -156,6 +159,7 @@ namespace Antmicro.Renode.Peripherals.UART
                             {
                                 foreach(byte value in txQueue)
                                 {
+                                    tx_ongoing = true;
                                     TransmitCharacter(value);
                                 }
                             }
@@ -206,6 +210,7 @@ namespace Antmicro.Renode.Peripherals.UART
 
                         if(txEnabled.Value)
                         {
+                            tx_ongoing = true;
                             TransmitCharacter((byte)val);
                         }
                         else if(txQueue.Count < txFIFOCapacity)
@@ -268,8 +273,12 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             txWatermarkIntr.Value |= TxWatermarkValue > txQueue.Count;
             rxWatermarkIntr.Value |= RxWatermarkValue <= Count;
-            txEmptyIntr.Value |= txQueue.Count == 0;
-
+            if (tx_ongoing) {
+                if (txQueue.Count == 0) {
+                    tx_ongoing = false;    
+                }
+                txEmptyIntr.Value |= txQueue.Count == 0;
+            }
             txWatermarkIRQ.Set(txWatermarkIntr.Value && txWatermarkEnabled.Value);
             rxWatermarkIRQ.Set(rxWatermarkIntr.Value && rxWatermarkEnabled.Value);
             txEmptyIRQ.Set(txEmptyIntr.Value && txEmptyEnabled.Value);
@@ -360,6 +369,8 @@ namespace Antmicro.Renode.Peripherals.UART
         private const int rxFIFOCapacity = 32;
         private const int txFIFOCapacity = 32;
         private const ulong fixedClockFrequency = 50000000;
+
+        private bool tx_ongoing;
 
         private enum ParityType
         {
